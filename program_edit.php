@@ -1,8 +1,9 @@
 <?php
 require_once 'auth.php';
 require_staff_or_admin();
-require_once 'db.php';
+require_once __DIR__ . '/Model/ProgramModel.php';
 
+$programModel = new Program();
 $error = '';
 $programId = $_GET['program_id'] ?? $_POST['program_id'] ?? '';
 $codeValue = '';
@@ -10,67 +11,40 @@ $titleValue = '';
 $yearsValue = '';
 
 // Validate incoming id
-if ($programId === '' || !ctype_digit((string)$programId)) {
+if ($programId === '' || !ctype_digit((string) $programId)) {
     $error = 'Invalid program selected.';
 } else {
-    $programId = (int)$programId;
+    $programId = (int) $programId;
 }
 
+$isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
+
 // Handle update submission
-if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($error === '' && $isPost) {
     $codeValue = trim($_POST['programCode'] ?? '');
     $titleValue = trim($_POST['programTitle'] ?? '');
-    $yearsValue = trim((string)($_POST['programYears'] ?? ''));
-    $years = is_numeric($yearsValue) ? (int)$yearsValue : null;
+    $yearsValue = trim((string) ($_POST['programYears'] ?? ''));
 
-    if ($codeValue === '' || $titleValue === '' || $years === null || $years <= 0) {
-        $error = 'All fields are required and years must be a positive number.';
-    } else {
-        // Ensure code is unique except for this record
-        $checkStmt = $conn->prepare('SELECT COUNT(*) FROM program WHERE code = ? AND program_id <> ?');
-        if ($checkStmt) {
-            $checkStmt->bind_param('si', $codeValue, $programId);
-            $checkStmt->execute();
-            $checkStmt->bind_result($dupCount);
-            $checkStmt->fetch();
-            $checkStmt->close();
-
-            if ($dupCount > 0) {
-                $error = 'Program code already exists. Please use a different code.';
-            } else {
-                // Update program entry
-                $stmt = $conn->prepare('UPDATE program SET code = ?, title = ?, years = ? WHERE program_id = ?');
-                if ($stmt) {
-                    $stmt->bind_param('ssii', $codeValue, $titleValue, $years, $programId);
-                    if ($stmt->execute()) {
-                        header('Location: program_list.php');
-                        exit;
-                    }
-                    $error = 'Unable to update program. Please try again.';
-                    $stmt->close();
-                } else {
-                    $error = 'Failed to prepare update statement.';
-                }
-            }
-        } else {
-            $error = 'Failed to prepare duplicate check statement.';
-        }
+    // Delegate validation and persistence to the Program model.
+    $updateResult = $programModel->update($programId, $codeValue, $titleValue, $yearsValue);
+    if ($updateResult['success']) {
+        header('Location: program_list.php');
+        exit;
     }
+
+    $error = $updateResult['error'];
 }
 
 // Load current values for initial display
-if ($error === '' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $loadStmt = $conn->prepare('SELECT code, title, years FROM program WHERE program_id = ?');
-    if ($loadStmt) {
-        $loadStmt->bind_param('i', $programId);
-        $loadStmt->execute();
-        $loadStmt->bind_result($codeValue, $titleValue, $yearsValue);
-        if (!$loadStmt->fetch()) {
-            $error = 'Program not found.';
-        }
-        $loadStmt->close();
+if ($error === '' && !$isPost) {
+    // Load the latest values to hydrate the edit form.
+    $readResult = $programModel->read(['id' => $programId]);
+    if ($readResult['success'] && $readResult['program']) {
+        $codeValue = (string) $readResult['program']['code'];
+        $titleValue = (string) $readResult['program']['title'];
+        $yearsValue = (string) $readResult['program']['years'];
     } else {
-        $error = 'Failed to load program.';
+        $error = $readResult['error'] ?: 'Failed to load program.';
     }
 }
 ?>

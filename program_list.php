@@ -1,7 +1,19 @@
 <?php
 require_once 'auth.php';
 require_login();
-require_once 'db.php';
+require_once __DIR__ . '/Model/ProgramModel.php';
+
+$search = trim($_GET['q'] ?? '');
+$sort = $_GET['sort'] ?? 'title';
+$programModel = new Program();
+
+// Pull user filters then ask the model for the matching dataset.
+$listResult = $programModel->read([
+    'search' => $search,
+    'sort' => $sort
+]);
+$programs = $listResult['programs'] ?? [];
+$loadError = $listResult['success'] ? '' : ($listResult['error'] ?: 'Unable to load programs.');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -39,7 +51,7 @@ require_once 'db.php';
                 <input type="text" name="q" placeholder="Search code, title, or years" value="<?php echo isset($_GET['q']) ? htmlspecialchars($_GET['q'], ENT_QUOTES) : ''; ?>">
                 <select name="sort">
                     <?php
-                        $currentSort = $_GET['sort'] ?? 'title';
+                        $currentSort = $sort;
                         $options = [
                             'title' => 'Title (A-Z)',
                             'code' => 'Code (A-Z)',
@@ -65,36 +77,24 @@ require_once 'db.php';
             </tr>
 
             <?php
-                // Pull search term if provided
-                $search = trim($_GET['q'] ?? '');
-                $sort = $_GET['sort'] ?? 'title';
-                $sql = "SELECT program_id, code, title, years FROM program";
+                if ($loadError !== '') {
+                    // Surface backend failure so staff know something went wrong.
+                    echo "<tr><td colspan='4' style='text-align:center;color:#c00;'>" . htmlspecialchars($loadError, ENT_QUOTES) . "</td></tr>";
+                } elseif (!empty($programs)) {
+                    foreach ($programs as $row) {
+                        $id = htmlspecialchars((string) $row['program_id'], ENT_QUOTES);
+                        $code = htmlspecialchars((string) $row['code'], ENT_QUOTES);
+                        $title = htmlspecialchars((string) $row['title'], ENT_QUOTES);
+                        $years = htmlspecialchars((string) $row['years'], ENT_QUOTES);
 
-                if ($search !== '') {
-                    // Filter by code, title, or years when searching
-                    $like = '%' . $conn->real_escape_string($search) . '%';
-                    $sql .= " WHERE code LIKE '{$like}' OR title LIKE '{$like}' OR CAST(years AS CHAR) LIKE '{$like}'";
-                }
-
-                $validSort = ['title' => 'title', 'code' => 'code', 'years' => 'years'];
-                $orderColumn = $validSort[$sort] ?? 'title';
-                $sql .= " ORDER BY {$orderColumn}";
-                $result = $conn -> query($sql);
-
-                if($result -> num_rows > 0){
-                    while($row = $result -> fetch_assoc()){
-                        $id = htmlspecialchars($row['program_id']);
-                        $code = htmlspecialchars($row['code']);
-                        $title = htmlspecialchars($row['title']);
-                            $years = htmlspecialchars($row['years']);
                         echo "<tr>" .
                              "<td>{$code}</td>" .
                              "<td>{$title}</td>" .
-                                "<td>{$years}</td>" .
+                             "<td>{$years}</td>" .
                              "<td><a class=\"link\" href=\"program_edit.php?program_id={$id}\">Edit</a></td>" .
                              "</tr>";
-                    }       
-                }else{
+                    }
+                } else {
                     echo "<tr><td colspan='4' style='text-align:center;'>No records found</td></tr>";
                 }
             ?>
