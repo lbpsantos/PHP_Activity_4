@@ -1,7 +1,18 @@
 <?php
-require_once 'auth.php';
-require_login();
-require_once 'db.php';
+    require_once 'auth.php';
+    require_login();
+    require_once __DIR__ . '/Model/SubjectModel.php';
+
+    $search = trim($_GET['q'] ?? '');
+    $sort = $_GET['sort'] ?? 'title';
+    $subjectModel = new Subject();
+
+    $listResult = $subjectModel->read([
+        'search' => $search,
+        'sort' => $sort
+    ]);
+    $subjects = $listResult['subjects'] ?? [];
+    $loadError = $listResult['success'] ? '' : ($listResult['error'] ?: 'Unable to load subjects.');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -39,7 +50,7 @@ require_once 'db.php';
                 <input type="text" name="q" placeholder="Search code, title, or unit" value="<?php echo isset($_GET['q']) ? htmlspecialchars($_GET['q'], ENT_QUOTES) : ''; ?>">
                 <select name="sort">
                     <?php
-                        $currentSort = $_GET['sort'] ?? 'title';
+                        $currentSort = $sort;
                         $options = [
                             'title' => 'Title (A-Z)',
                             'code' => 'Code (A-Z)',
@@ -65,36 +76,23 @@ require_once 'db.php';
             </tr>
 
             <?php
-                // Pull search term if provided
-                $search = trim($_GET['q'] ?? '');
-                $sort = $_GET['sort'] ?? 'title';
-                $sql = "SELECT subject_id, code, title, unit FROM subject";
+                if ($loadError !== '') {
+                    echo "<tr><td colspan='4' style='text-align:center;color:#c00;'>" . htmlspecialchars($loadError, ENT_QUOTES) . "</td></tr>";
+                } elseif (!empty($subjects)) {
+                    foreach ($subjects as $row) {
+                        $id = htmlspecialchars((string) $row['subject_id'], ENT_QUOTES);
+                        $code = htmlspecialchars((string) $row['code'], ENT_QUOTES);
+                        $title = htmlspecialchars((string) $row['title'], ENT_QUOTES);
+                        $unit = htmlspecialchars((string) $row['unit'], ENT_QUOTES);
 
-                if ($search !== '') {
-                    // Filter by code, title, or unit when searching
-                    $like = '%' . $conn->real_escape_string($search) . '%';
-                    $sql .= " WHERE code LIKE '{$like}' OR title LIKE '{$like}' OR CAST(unit AS CHAR) LIKE '{$like}'";
-                }
-
-                $validSort = ['title' => 'title', 'code' => 'code', 'unit' => 'unit'];
-                $orderColumn = $validSort[$sort] ?? 'title';
-                $sql .= " ORDER BY {$orderColumn}";
-                $result = $conn -> query($sql);
-
-                if($result -> num_rows > 0){
-                    while($row = $result -> fetch_assoc()){
-                        $id = htmlspecialchars($row['subject_id']);
-                        $code = htmlspecialchars($row['code']);
-                        $title = htmlspecialchars($row['title']);
-                        $unit = htmlspecialchars($row['unit']);
                         echo "<tr>" .
                              "<td>{$code}</td>" .
                              "<td>{$title}</td>" .
                              "<td>{$unit}</td>" .
                              "<td><a class=\"link\" href=\"subject_edit.php?subject_id={$id}\">Edit</a></td>" .
                              "</tr>";
-                    }       
-                }else{
+                    }
+                } else {
                     echo "<tr><td colspan='4' style='text-align:center;'>No records found</td></tr>";
                 }
             ?>
