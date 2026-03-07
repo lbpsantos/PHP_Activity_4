@@ -1,79 +1,47 @@
 <?php
-require_once 'auth.php';
-require_staff_or_admin();
-require_once 'db.php';
+	require_once 'auth.php';
+	require_staff_or_admin();
+	require_once __DIR__ . '/Model/SubjectModel.php';
 
-$error = '';
-//GET the subject_id from the URL
-$subjectId = $_GET['subject_id'] ?? $_POST['subject_id'] ?? '';
-$codeValue = '';
-$titleValue = '';
-$unitValue = '';
+	$subjectModel = new Subject();
+	$error = '';
+	$subjectId = $_GET['subject_id'] ?? $_POST['subject_id'] ?? '';
+	$codeValue = '';
+	$titleValue = '';
+	$unitValue = '';
 
-// Validate incoming id
-if ($subjectId === '' || !ctype_digit((string)$subjectId)) {
-	$error = 'Invalid subject selected.';
-} else {
-	$subjectId = (int)$subjectId;
-}
-
-// Handle update submission
-if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-	$codeValue = trim($_POST['subjectCode'] ?? '');
-	$titleValue = trim($_POST['subjectTitle'] ?? '');
-	$unitValue = trim((string)($_POST['subjectUnit'] ?? ''));
-	$unit = is_numeric($unitValue) ? (int)$unitValue : null;
-
-	if ($codeValue === '' || $titleValue === '' || $unit === null) {
-		$error = 'All fields are required and unit must be a number.';
+	if ($subjectId === '' || !ctype_digit((string) $subjectId)) {
+			error = 'Invalid subject selected.';
 	} else {
-		// Ensure code is unique except for this record
-		$checkStmt = $conn->prepare('SELECT COUNT(*) FROM subject WHERE code = ? AND subject_id <> ?');
-		if ($checkStmt) {
-			$checkStmt->bind_param('si', $codeValue, $subjectId);
-			$checkStmt->execute();
-			$checkStmt->bind_result($dupCount);
-			$checkStmt->fetch();
-			$checkStmt->close();
+			$subjectId = (int) $subjectId;
+	}
 
-			if ($dupCount > 0) {
-				$error = 'Subject code already exists. Please use a different code.';
-			} else {
-				// Update subject entry
-				$stmt = $conn->prepare('UPDATE subject SET code = ?, title = ?, unit = ? WHERE subject_id = ?');
-				if ($stmt) {
-					$stmt->bind_param('ssii', $codeValue, $titleValue, $unit, $subjectId);
-					if ($stmt->execute()) {
-						header('Location: subject_list.php');
-						exit;
-					}
-					$error = 'Unable to update subject. Please try again.';
-					$stmt->close();
-				} else {
-					$error = 'Failed to prepare update statement.';
-				}
+	$isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
+
+	if ($error === '' && $isPost) {
+			$codeValue = trim($_POST['subjectCode'] ?? '');
+			$titleValue = trim($_POST['subjectTitle'] ?? '');
+			$unitValue = trim((string) ($_POST['subjectUnit'] ?? ''));
+
+			$updateResult = $subjectModel->update($subjectId, $codeValue, $titleValue, $unitValue);
+			if ($updateResult['success']) {
+				header('Location: subject_list.php');
+				exit;
 			}
-		} else {
-			$error = 'Failed to prepare duplicate check statement.';
-		}
-	}
-}
 
-// Load current values for initial display
-if ($error === '' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-	$loadStmt = $conn->prepare('SELECT code, title, unit FROM subject WHERE subject_id = ?');
-	if ($loadStmt) {
-		$loadStmt->bind_param('i', $subjectId);
-		$loadStmt->execute();
-		$loadStmt->bind_result($codeValue, $titleValue, $unitValue);
-		if (!$loadStmt->fetch()) {
-			$error = 'Subject not found.';
-		}
-		$loadStmt->close();
-	} else {
-		$error = 'Failed to load subject.';
+			$error = $updateResult['error'] ?? 'Unable to update subject. Please try again.';
 	}
-}
+
+	if ($error === '' && !$isPost) {
+		$readResult = $subjectModel->read(['id' => $subjectId]);
+		if ($readResult['success'] && $readResult['subject']) {
+			$codeValue = (string) $readResult['subject']['code'];
+			$titleValue = (string) $readResult['subject']['title'];
+			$unitValue = (string) $readResult['subject']['unit'];
+		} else {
+			$error = $readResult['error'] ?: 'Failed to load subject.';
+		}
+	}
 ?>
 <!DOCTYPE html>
 <html lang="en">

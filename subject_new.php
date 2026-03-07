@@ -1,55 +1,30 @@
 <?php
-require_once 'auth.php';
-require_staff_or_admin();
-require_once 'db.php';
+    require_once 'auth.php';
+    require_staff_or_admin();
+    require_once __DIR__ . '/Model/SubjectModel.php';
 
-$error = '';
-$codeValue = '';
-$titleValue = '';
-$unitValue = '';
+    $error = '';
+    $codeValue = '';
+    $titleValue = '';
+    $unitValue = '';
 
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $codeValue = trim($_POST['subjectCode'] ?? '');
-    $titleValue = trim($_POST['subjectTitle'] ?? '');
-    $unitValue = trim((string)($_POST['subjectUnit'] ?? ''));
-    $unit = is_numeric($unitValue) ? (int)$unitValue : null;
+    $subjectModel = new Subject();
 
-    // Basic validation for required inputs
-    if ($codeValue === '' || $titleValue === '' || $unit === null || $unit <= 0) {
-        $error = 'All fields are required and unit must be a positive number.';
-    } else {
-        // Ensure subject code is unique
-        $checkStmt = $conn->prepare('SELECT COUNT(*) FROM subject WHERE code = ?');
-        if ($checkStmt) {
-            $checkStmt->bind_param('s', $codeValue);
-            $checkStmt->execute();
-            $checkStmt->bind_result($existingCount);
-            $checkStmt->fetch();
-            $checkStmt->close();
+    // Handle form submission
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $codeValue = trim($_POST['subjectCode'] ?? '');
+        $titleValue = trim($_POST['subjectTitle'] ?? '');
+        $unitValue = trim((string)($_POST['subjectUnit'] ?? ''));
+        $result = $subjectModel->create($codeValue, $titleValue, $unitValue);
 
-            if ($existingCount > 0) {
-                $error = 'Subject code already exists. Please use a different code.';
-            } else {
-                // Save new subject when validation passes
-                $stmt = $conn->prepare('INSERT INTO subject (code, title, unit) VALUES (?, ?, ?)');
-                if ($stmt) {
-                    $stmt->bind_param('ssi', $codeValue, $titleValue, $unit);
-                    if ($stmt->execute()) {
-                        header('Location: subject_list.php');
-                        exit;
-                    }
-                    $error = 'Unable to save subject. Please try again.';
-                    $stmt->close();
-                } else {
-                    $error = 'Failed to prepare database statement.';
-                }
-            }
-        } else {
-            $error = 'Failed to prepare duplicate check statement.';
+        if (!empty($result['success'])) {
+            set_flash_message('Subject created successfully.', 'success');
+            header('Location: subject_list.php');
+            exit;
         }
+
+        $error = $result['error'] ?? 'Unable to save subject. Please try again.';
     }
-}
 ?>
 <!DOCTYPE html>
  <html lang="en">
