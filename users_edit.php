@@ -2,12 +2,13 @@
 require_once 'auth.php';
 // Restrict editing to administrators only
 require_admin();
-require_once 'db.php';
+require_once __DIR__ . '/Model/UserModel.php';
 
 $currentUser = current_user();
 $flash = get_flash_message();
 $error = '';
-$accountTypes = ['admin', 'staff', 'teacher', 'student'];
+$userModel = new User();
+$accountTypes = $userModel->getAccountTypes();
 $userId = $_GET['id'] ?? $_POST['id'] ?? '';
 
 // Reject malformed or missing identifiers early
@@ -24,60 +25,22 @@ $accountTypeValue = 'staff';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	$usernameValue = trim($_POST['username'] ?? '');
 	$accountTypeValue = $_POST['account_type'] ?? '';
-
-	if ($usernameValue === '' || $accountTypeValue === '') {
-		$error = 'Username and account type are required.';
-	} elseif (!in_array($accountTypeValue, $accountTypes, true)) {
-		$error = 'Invalid account type selected.';
-	} else {
-		// Ensure we're not colliding with another username
-		$check = $conn->prepare('SELECT COUNT(*) FROM users WHERE username = ? AND id <> ?');
-		if ($check) {
-			$check->bind_param('si', $usernameValue, $userId);
-			$check->execute();
-			$check->bind_result($taken);
-			$check->fetch();
-			$check->close();
-
-			if ($taken > 0) {
-				$error = 'Username already exists.';
-			} else {
-				$adminId = (int) ($currentUser['id'] ?? 0);
-				// Persist metadata so we know who updated the account
-				$stmt = $conn->prepare('UPDATE users SET username = ?, account_type = ?, updated_on = NOW(), updated_by = ? WHERE id = ?');
-				if ($stmt) {
-					$stmt->bind_param('ssii', $usernameValue, $accountTypeValue, $adminId, $userId);
-					if ($stmt->execute()) {
-						$stmt->close();
-						set_flash_message('User updated successfully.', 'success');
-						header('Location: users_list.php');
-						exit;
-					}
-					$stmt->close();
-					$error = 'Unable to update the user right now.';
-				} else {
-					$error = 'Failed to prepare the update statement.';
-				}
-			}
-		} else {
-			$error = 'Unable to check username availability.';
-		}
+	$adminId = (int) ($currentUser['id'] ?? 0);
+	$result = $userModel->update($userId, $usernameValue, $accountTypeValue, $adminId);
+	if (!empty($result['success'])) {
+		set_flash_message('User updated successfully.', 'success');
+		header('Location: users_list.php');
+		exit;
 	}
+
+	$error = $result['error'] ?? 'Unable to update the user right now.';
 } else {
-	$stmt = $conn->prepare('SELECT username, account_type FROM users WHERE id = ?');
-	if ($stmt) {
-		$stmt->bind_param('i', $userId);
-		$stmt->execute();
-		$stmt->bind_result($usernameValue, $accountTypeValue);
-		if (!$stmt->fetch()) {
-			$stmt->close();
-			set_flash_message('User not found.', 'error');
-			header('Location: users_list.php');
-			exit;
-		}
-		$stmt->close();
+	$readResult = $userModel->read(['id' => $userId]);
+	if ($readResult['success'] && $readResult['user']) {
+		$usernameValue = (string) $readResult['user']['username'];
+		$accountTypeValue = (string) $readResult['user']['account_type'];
 	} else {
-		set_flash_message('Unable to load the requested user.', 'error');
+		set_flash_message($readResult['error'] ?: 'Unable to load the requested user.', 'error');
 		header('Location: users_list.php');
 		exit;
 	}

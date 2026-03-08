@@ -7,49 +7,20 @@ if (!is_admin()) {
     header('Location: home.php');
     exit;
 }
-require_once 'db.php';
+require_once __DIR__ . '/Model/UserModel.php';
 
 $flash = get_flash_message();
-$users = [];
-$loadError = '';
 $search = trim($_GET['q'] ?? '');
 $sort = $_GET['sort'] ?? 'username';
+$userModel = new User();
 
-$sortColumns = [
-    'username' => 'username ASC',
-    'account_type' => 'account_type ASC',
-    'created' => 'created_on DESC',
-    'updated' => 'updated_on DESC',
-];
-$orderSql = $sortColumns[$sort] ?? $sortColumns['username'];
-
-// Pull a simple ordered list of accounts for display
-$baseQuery = 'SELECT id, username, account_type, created_on, updated_on FROM users';
-$hasSearch = $search !== '';
-$sql = $baseQuery;
-if ($hasSearch) {
-    $sql .= ' WHERE username LIKE ? OR account_type LIKE ?';
-}
-$sql .= ' ORDER BY ' . $orderSql;
-
-$stmt = $conn->prepare($sql);
-if ($stmt) {
-    if ($hasSearch) {
-        $like = '%' . $search . '%';
-        $stmt->bind_param('ss', $like, $like);
-    }
-    if ($stmt->execute()) {
-        $result = $stmt->get_result();
-        while ($row = $result->fetch_assoc()) {
-            $users[] = $row;
-        }
-    } else {
-        $loadError = 'Unable to load users.';
-    }
-    $stmt->close();
-} else {
-    $loadError = 'Unable to load users.';
-}
+// Ask the model for a filtered/sorted list so the controller stays thin.
+$listResult = $userModel->read([
+    'search' => $search,
+    'sort' => $sort
+]);
+$users = $listResult['users'] ?? [];
+$loadError = $listResult['success'] ? '' : ($listResult['error'] ?: 'Unable to load users.');
 ?>
 <!DOCTYPE html>
 <html lang="en">
