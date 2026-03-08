@@ -2,62 +2,31 @@
 require_once 'auth.php';
 // Guard the page so only admins can add new accounts
 require_admin();
-require_once 'db.php';
+require_once __DIR__ . '/Model/UserModel.php';
 
 $currentUser = current_user();
 $flash = get_flash_message();
 $error = '';
-$usernameValue = trim($_POST['username'] ?? '');
-$accountTypes = ['admin', 'staff', 'teacher', 'student'];
-$accountTypeValue = $_POST['account_type'] ?? 'staff';
+$usernameValue = '';
+$userModel = new User();
+$accountTypes = $userModel->getAccountTypes();
+$accountTypeValue = 'staff';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+	$usernameValue = trim($_POST['username'] ?? '');
+	$accountTypeValue = $_POST['account_type'] ?? 'staff';
 	$password = $_POST['password'] ?? '';
 	$confirmPassword = $_POST['confirm_password'] ?? '';
+	$adminId = (int) ($currentUser['id'] ?? 0);
 
-	if ($usernameValue === '') {
-		$error = 'Username is required.';
-	} elseif (!in_array($accountTypeValue, $accountTypes, true)) {
-		$error = 'Invalid account type selected.';
-	} elseif ($password === '' || strlen($password) < 8) {
-		$error = 'Password must be at least 8 characters long.';
-	} elseif ($password !== $confirmPassword) {
-		$error = 'Password confirmation does not match.';
-	} else {
-		// Ensure usernames remain unique to avoid collisions
-		$check = $conn->prepare('SELECT COUNT(*) FROM users WHERE username = ?');
-		if ($check) {
-			$check->bind_param('s', $usernameValue);
-			$check->execute();
-			$check->bind_result($existing);
-			$check->fetch();
-			$check->close();
-
-			if ($existing > 0) {
-				$error = 'Username already exists.';
-			} else {
-					// Store a hashed password plus metadata about the creating admin
-					$hash = password_hash($password, PASSWORD_DEFAULT);
-				$adminId = (int) ($currentUser['id'] ?? 0);
-					$stmt = $conn->prepare('INSERT INTO users (username, password, account_type, created_on, created_by, updated_on, updated_by) VALUES (?, ?, ?, NOW(), ?, NULL, NULL)');
-				if ($stmt) {
-						$stmt->bind_param('sssi', $usernameValue, $hash, $accountTypeValue, $adminId);
-					if ($stmt->execute()) {
-						$stmt->close();
-						set_flash_message('User created successfully.', 'success');
-						header('Location: users_list.php');
-						exit;
-					}
-					$stmt->close();
-					$error = 'Unable to save the user right now.';
-				} else {
-					$error = 'Failed to prepare the insert statement.';
-				}
-			}
-		} else {
-			$error = 'Unable to check username availability.';
-		}
+	$result = $userModel->create($usernameValue, $accountTypeValue, $password, $confirmPassword, $adminId);
+	if (!empty($result['success'])) {
+		set_flash_message('User created successfully.', 'success');
+		header('Location: users_list.php');
+		exit;
 	}
+
+	$error = $result['error'] ?? 'Unable to save the user right now.';
 }
 ?>
 <!DOCTYPE html>
