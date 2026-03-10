@@ -11,7 +11,7 @@
 	$unitValue = '';
 
 	if ($subjectId === '' || !ctype_digit((string) $subjectId)) {
-			error = 'Invalid subject selected.';
+			$error = 'Invalid subject selected.';
 	} else {
 			$subjectId = (int) $subjectId;
 	}
